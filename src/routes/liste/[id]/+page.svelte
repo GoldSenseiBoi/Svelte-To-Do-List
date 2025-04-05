@@ -6,30 +6,30 @@
   let listId = "";
   let tasks = [];
   let selectedTaskIds = new Set();
-  let ready = false; // flag pour bloquer tout tant que l'ID n’est pas chargé
+  let ready = false;
 
-  // Clé dynamique
   function getStorageKey() {
     return `todolist-${listId}`;
   }
 
-  // Chargement des tâches une fois l’ID dispo
   onMount(() => {
     const unsubscribe = page.subscribe(({ params }) => {
-      if (params.id) {
+      if (params.id && params.id.trim() !== "") {
         listId = params.id;
-        const key = getStorageKey();
-        const raw = localStorage.getItem(key);
-        if (raw) {
+
+        if (typeof localStorage !== 'undefined') {
+          const key = getStorageKey();
+          const raw = localStorage.getItem(key);
+
           try {
             const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-              tasks = parsed;
-            }
+            tasks = Array.isArray(parsed) ? parsed : [];
           } catch (e) {
-            console.error("JSON corrompu :", e);
+            console.error("Erreur JSON corrompu :", e);
+            tasks = [];
           }
         }
+
         ready = true;
       }
     });
@@ -37,14 +37,15 @@
     return unsubscribe;
   });
 
-  // Sauvegarde uniquement si prêt
   function saveTasks() {
-    if (ready) {
+    if (!ready || !listId || typeof localStorage === 'undefined') return;
+
+    try {
       localStorage.setItem(getStorageKey(), JSON.stringify(tasks));
+    } catch (e) {
+      console.error("Erreur de sauvegarde localStorage :", e);
     }
   }
-
-  // === Fonctions ===
 
   function findTaskById(list, id) {
     for (let task of list) {
@@ -89,6 +90,7 @@
       selectedTaskIds.add(task.id);
     }
     selectedTaskIds = new Set(selectedTaskIds);
+    tasks = [...tasks]; // trigger reactive update
     saveTasks();
   }
 
@@ -109,6 +111,7 @@
       children: []
     };
     task.children = [...task.children, subtask];
+    tasks = [...tasks]; // ensure reactivity
     saveTasks();
   }
 
@@ -131,6 +134,7 @@
       tasks = [...tasks, task];
     }
 
+    tasks = [...tasks]; // trigger reactivity
     saveTasks();
   }
 
@@ -145,6 +149,7 @@
       const text = prompt("Modifier :", task.text);
       if (text) {
         task.text = text;
+        tasks = [...tasks]; // trigger reactivity
         saveTasks();
       }
     }
@@ -153,6 +158,7 @@
   function handleDelete() {
     tasks = deleteTaskById(tasks, selectedTaskIds);
     selectedTaskIds = new Set();
+    tasks = [...tasks]; // trigger reactivity
     saveTasks();
   }
 
@@ -177,6 +183,7 @@
     }
 
     selectedTaskIds = new Set();
+    tasks = [...tasks]; // trigger reactivity
     saveTasks();
   }
 </script>

@@ -1,4 +1,7 @@
 <script>
+    // ⛑️ Auto-import pour éviter le bug récursif "TaskItem is not defined"
+    import TaskItem from "./TaskItem.svelte";
+  
     export let task;
     export let level = 0;
     export let selectedTaskIds;
