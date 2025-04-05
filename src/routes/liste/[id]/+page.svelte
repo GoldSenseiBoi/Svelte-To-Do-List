@@ -6,41 +6,48 @@
   let listId = "";
   let tasks = [];
   let selectedTaskIds = new Set();
+  let ready = false; // flag pour bloquer tout tant que l'ID n’est pas chargé
 
-  // Génère la clé de stockage en fonction de l'ID de la liste
+  // Clé dynamique
   function getStorageKey() {
     return `todolist-${listId}`;
   }
 
-  // Charger les tâches à l’ouverture
+  // Chargement des tâches une fois l’ID dispo
   onMount(() => {
     const unsubscribe = page.subscribe(({ params }) => {
-      listId = params.id;
-
-      const data = localStorage.getItem(getStorageKey());
-      if (data) {
-        try {
-          const parsed = JSON.parse(data);
-          if (Array.isArray(parsed)) {
-            tasks = parsed;
+      if (params.id) {
+        listId = params.id;
+        const key = getStorageKey();
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              tasks = parsed;
+            }
+          } catch (e) {
+            console.error("JSON corrompu :", e);
           }
-        } catch (e) {
-          console.error("Erreur de parsing des tâches :", e);
         }
+        ready = true;
       }
     });
 
     return unsubscribe;
   });
 
-  // Sauvegarder dans localStorage
+  // Sauvegarde uniquement si prêt
   function saveTasks() {
-    localStorage.setItem(getStorageKey(), JSON.stringify(tasks));
+    if (ready) {
+      localStorage.setItem(getStorageKey(), JSON.stringify(tasks));
+    }
   }
 
-  // Fonctions de recherche
-  function findTaskById(taskList, id) {
-    for (const task of taskList) {
+  // === Fonctions ===
+
+  function findTaskById(list, id) {
+    for (let task of list) {
       if (task.id === id) return task;
       const found = findTaskById(task.children, id);
       if (found) return found;
@@ -48,17 +55,17 @@
     return null;
   }
 
-  function findParentTask(taskList, childId, parent = null) {
-    for (const task of taskList) {
-      if (task.id === childId) return parent;
-      const found = findParentTask(task.children, childId, task);
+  function findParentTask(list, id, parent = null) {
+    for (let task of list) {
+      if (task.id === id) return parent;
+      const found = findParentTask(task.children, id, task);
       if (found) return found;
     }
     return null;
   }
 
-  function deleteTaskById(taskList, ids) {
-    return taskList.filter(task => {
+  function deleteTaskById(list, ids) {
+    return list.filter(task => {
       if (ids.has(task.id)) return false;
       task.children = deleteTaskById(task.children, ids);
       return true;
@@ -70,7 +77,7 @@
       ...task,
       id: Date.now() + Math.random(),
       text: task.text + " (copie)",
-      children: task.children.map(duplicateTask),
+      children: task.children.map(duplicateTask)
     };
   }
 
@@ -85,44 +92,45 @@
     saveTasks();
   }
 
-  function selectTask(taskId) {
-    if (selectedTaskIds.has(taskId)) {
-      selectedTaskIds.delete(taskId);
+  function selectTask(id) {
+    if (selectedTaskIds.has(id)) {
+      selectedTaskIds.delete(id);
     } else {
-      selectedTaskIds.add(taskId);
+      selectedTaskIds.add(id);
     }
     selectedTaskIds = new Set(selectedTaskIds);
   }
 
   function addSubtaskTo(task) {
-    const newSubtask = {
+    const subtask = {
       id: Date.now(),
       text: "Nouvelle sous-tâche",
       completed: false,
       children: []
     };
-    task.children = [...task.children, newSubtask];
+    task.children = [...task.children, subtask];
     saveTasks();
   }
 
   function handleAdd() {
-    const newTask = {
+    const task = {
       id: Date.now(),
       text: selectedTaskIds.size ? "Nouvelle sous-tâche" : "Nouvelle tâche",
       completed: false,
       children: []
     };
 
-    if (selectedTaskIds.size > 0) {
+    if (selectedTaskIds.size) {
       for (const id of selectedTaskIds) {
         const parent = findTaskById(tasks, id);
         if (parent) {
-          parent.children = [...parent.children, newTask];
+          parent.children = [...parent.children, task];
         }
       }
     } else {
-      tasks = [...tasks, newTask];
+      tasks = [...tasks, task];
     }
+
     saveTasks();
   }
 
@@ -134,9 +142,9 @@
     const id = [...selectedTaskIds][0];
     const task = findTaskById(tasks, id);
     if (task) {
-      const newText = prompt("Modifier la tâche :", task.text);
-      if (newText) {
-        task.text = newText;
+      const text = prompt("Modifier :", task.text);
+      if (text) {
+        task.text = text;
         saveTasks();
       }
     }
@@ -149,7 +157,7 @@
   }
 
   function handleDuplicate() {
-    const clones = [];
+    const copies = [];
 
     for (const id of selectedTaskIds) {
       const task = findTaskById(tasks, id);
@@ -159,13 +167,13 @@
         if (parent) {
           parent.children = [...parent.children, clone];
         } else {
-          clones.push(clone);
+          copies.push(clone);
         }
       }
     }
 
-    if (clones.length) {
-      tasks = [...tasks, ...clones];
+    if (copies.length) {
+      tasks = [...tasks, ...copies];
     }
 
     selectedTaskIds = new Set();
@@ -209,22 +217,24 @@
   <h1>Ma liste</h1>
 
   <div class="buttons">
-    <button on:click={handleAdd}>Add</button>
-    <button on:click={handleEdit} disabled={selectedTaskIds.size !== 1}>Edit</button>
-    <button on:click={handleDuplicate} disabled={selectedTaskIds.size === 0}>Duplicate</button>
-    <button on:click={handleDelete} disabled={selectedTaskIds.size === 0}>Delete</button>
+    <button on:click={handleAdd} disabled={!ready}>Add</button>
+    <button on:click={handleEdit} disabled={selectedTaskIds.size !== 1 || !ready}>Edit</button>
+    <button on:click={handleDuplicate} disabled={selectedTaskIds.size === 0 || !ready}>Duplicate</button>
+    <button on:click={handleDelete} disabled={selectedTaskIds.size === 0 || !ready}>Delete</button>
   </div>
 
   <div class="task-list">
-    {#each tasks as task (task.id)}
-      <TaskItem
-        {task}
-        level={0}
-        {selectedTaskIds}
-        {selectTask}
-        {toggleCheck}
-        {addSubtaskTo}
-      />
-    {/each}
+    {#if ready}
+      {#each tasks as task (task.id)}
+        <TaskItem
+          {task}
+          level={0}
+          {selectedTaskIds}
+          {selectTask}
+          {toggleCheck}
+          {addSubtaskTo}
+        />
+      {/each}
+    {/if}
   </div>
 </div>
