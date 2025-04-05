@@ -1,5 +1,3 @@
-<!-- src/routes/liste/[id]/+page.svelte -->
-
 <script>
 </script>
  
